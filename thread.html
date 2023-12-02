@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LEMAN FORUM</title>
+    <style>
+        body {
+            margin: 10px 60px;
+            font-family: 'Arial', sans-serif;
+        }
+
+        h1, h4, ol {
+            margin: 0;
+        }
+
+        p {
+            margin: 5px 0;
+        }
+
+        .top-bar {
+            background-color: skyblue;
+            padding: 0 40px;
+        }
+
+        .main {
+            background-color: lightgrey;
+            padding: 10px 15px;
+        }
+
+        .thread-info {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .thread-info p {
+            margin: 0;
+        }
+
+        .comments {
+            margin-top: 20px;
+        }
+
+        .comment {
+            margin: 15px 0;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+        }
+
+        .comment .top-comment {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .comment .user {
+            font-weight: bold;
+        }
+
+        .comment .comment-ts {
+            color: grey;
+        }
+
+        .comment .comment-content {
+            word-wrap: break-word;
+        }
+
+        .comment .reply-comment-btn {
+            background-color: #2196F3;
+            color: white;
+            padding: 5px 10px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+
+        .comment .replies {
+            margin-left: 30px; /* Adjust as needed */
+        }
+
+        textarea:invalid {
+            border: 2px solid red;
+        }
+
+        textarea {
+            width: calc(100% - 20px);
+            height: 80px;
+            margin-bottom: 10px;
+            padding: 10px;
+            box-sizing: border-box;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+
+        button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            margin-right: 10px;
+        }
+
+        .lock-thread-btn,
+        .unlock-thread-btn,
+        .delete-comment-btn,
+        .reply-comment-btn {
+            background-color: #f44336;
+        }
+
+        .minimized-image {
+            max-width: 100%;
+            max-height: 100%;
+            cursor: pointer;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+        }
+
+        .lightbox {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.7);
+            justify-content: center;
+            align-items: center;
+        }
+
+        .lightbox img {
+            max-width: 80%;
+            max-height: 80%;
+            border: 1px solid #fff;
+            border-radius: 5px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+        }
+    </style>
+</head>
+
+<body>
+    <div class="top-bar">
+        <h1>LEMAN FORUM</h1>
+    </div>
+    <div class="main">
+        <div class="thread-info">
+            <h4 class="title"></h4>
+            <div>
+                <p class="timestamp"></p>
+                <p class="comment-count"></p>
+            </div>
+        </div>
+        <div class="header">
+            <div class="bottom">
+                <button id="lockThreadBtn" class="lock-thread-btn">Lock Thread</button>
+                <button id="unlockThreadBtn" class="unlock-thread-btn">Unlock Thread</button>
+                <p class="thread-status"></p>
+            </div>
+        </div>
+        <textarea placeholder="Enter your comment..." id="commentInput" required minlength="1" maxlength="200" disabled></textarea>
+        <div id="charCount">Characters: 0</div>
+        <button id="addCommentBtn" disabled>Add Comment</button>
+        <div class="comments" id="commentsSection"></div>
+    </div>
+
+    <script>
+        var threads = [];
+        var container = document.getElementById('commentsSection');
+        var addCommentBtn = document.getElementById('addCommentBtn');
+        var lockThreadBtn = document.getElementById('lockThreadBtn');
+        var unlockThreadBtn = document.getElementById('unlockThreadBtn');
+        var commentInput = document.getElementById('commentInput');
+        var charCountDisplay = document.getElementById('charCount');
+        var lastButtonClickTime = 0;
+        var cooldownPeriod = 5000; // 5000 milliseconds (5 seconds)
+        var minCharLimit = 1; // Minimum character limit for comments
+        var maxCharLimit = 200; // Maximum character limit for comments
+        var moderatorPassword;
+
+        function loadThreadFromLocalStorage() {
+            var storedThreads = localStorage.getItem('threads');
+            if (storedThreads) {
+                threads = JSON.parse(storedThreads);
+                var thread = threads.find(t => t.id == id);
+                if (!thread) {
+                    console.error(`Thread with ID ${id} not found.`);
+                }
+            }
+        }
+
+        function renderComments() {
+            container.innerHTML = "";
+            if (thread && thread.comments) {
+                thread.comments.forEach(comment => {
+                    addCommentToContainer(comment);
+                    if (comment.replies) {
+                        comment.replies.forEach(reply => {
+                            addCommentToContainer(reply, comment.id, true);
+                        });
+                    }
+                });
+            }
+            updateCommentCount();
+        }
+
+        function filterDerogatorySpeech(text) {
+            return text.replace(/bad_word/g, '*');
+        }
+
+        function addCommentToContainer(comment, parentId, isReply = false) {
+            if (comment) {
+                comment.content = filterDerogatorySpeech(comment.content);
+
+                var html = `
+                    <div class="comment" data-comment-id="${comment.id}">
+                        <div class="top-comment">
+                            <p class="user">${comment.author}</p>
+                            <p class="comment-ts">${new Date(comment.date).toLocaleDateString()}</p>
+                            <button class="delete-comment-btn" data-comment-id="${comment.id}">Delete</button>
+                            <button class="reply-comment-btn" data-parent-id="${comment.id}">Reply</button>
+                        </div>
+                        <div class="comment-content">${comment.content}</div>
+                        <div class="replies" data-reply-section="${comment.id}"></div>
+                    </div>
+                `;
+
+                var commentContainer = container;
+
+                if (parentId && isReply) {
+                    var parentComment = document.querySelector(`[data-comment-id="${parentId}"]`);
+                    if (parentComment) {
+                        commentContainer = parentComment.querySelector('.replies');
+                        if (!commentContainer) {
+                            commentContainer = document.createElement('div');
+                            commentContainer.classList.add('replies');
+                            parentComment.appendChild(commentContainer);
+                        }
+                    } else {
+                        console.error("Parent comment not found.");
+                    }
+                }
+
+                commentContainer.insertAdjacentHTML('beforeend', html);
+                }
+
+        }
+
+        function saveThreadToLocalStorage() {
+            localStorage.setItem('threads', JSON.stringify(threads));
+        }
+
+        function unlockThread() {
+            if (promptForPassword()) {
+                thread.locked = false;
+                unlockThreadBtn.style.display = 'none';
+                lockThreadBtn.style.display = 'inline-block';
+                commentInput.removeAttribute('disabled');
+                addCommentBtn.removeAttribute('disabled');
+                document.querySelector('.thread-status').textContent = '';
+                console.log("Thread unlocked.");
+            }
+        }
+
+        function lockThread() {
+            if (promptForPassword()) {
+                thread.locked = true;
+                unlockThreadBtn.style.display = 'inline-block';
+                lockThreadBtn.style.display = 'none';
+                commentInput.setAttribute('disabled', true);
+                addCommentBtn.setAttribute('disabled', true);
+                document.querySelector('.thread-status').textContent = 'Thread is locked. Commenting is disabled.';
+                console.log("Thread locked.");
+            }
+        }
+
+        function addCommentWithCooldown() {
+            var currentTime = Date.now();
+
+            if (currentTime - lastButtonClickTime >= cooldownPeriod) {
+                var txt = commentInput;
+                var commentContent = txt.value.trim();
+
+                if (commentContent.length >= minCharLimit) {
+                    var comment = {
+                        id: generateUniqueId(),
+                        content: commentContent,
+                        date: currentTime,
+                        author: 'John' // Replace with the actual author information
+                    };
+
+                    if (!thread.comments) {
+                        thread.comments = [];
+                    }
+
+                    thread.comments.unshift(comment); // Add the new comment to the beginning of the array
+                    saveThreadToLocalStorage();
+                    renderComments();
+
+                    lastButtonClickTime = currentTime;
+
+                    txt.value = '';
+                    charCountDisplay.textContent = 'Characters: 0';
+
+                    console.log("Comment added successfully.");
+                } else {
+                    console.log("Comment must have at least " + minCharLimit + " characters.");
+                }
+            } else {
+                console.log("Cooldown active. Please wait.");
+            }
+        }
+
+        function replyToComment(parentCommentId) {
+            var replySection = document.querySelector(`[data-reply-section="${parentCommentId}"]`);
+            if (replySection) {
+                var replyTitle = document.createElement('p');
+                replyTitle.classList.add('reply-title');
+                replyTitle.textContent = 'Replying to:';
+
+                var parentComment = findCommentById(parentCommentId);
+
+                var replyAuthor = document.createElement('p');
+                replyAuthor.classList.add('reply-author');
+                replyAuthor.textContent = parentComment.author;
+
+                var replyContent = document.createElement('p');
+                replyContent.classList.add('reply-content');
+                replyContent.textContent = parentComment.content;
+
+                var replyTextarea = document.createElement('textarea');
+                replyTextarea.placeholder = 'Enter your reply...';
+                replyTextarea.setAttribute('data-reply-textarea', parentCommentId);
+
+                var replyButton = document.createElement('button');
+                replyButton.textContent = 'Add Reply';
+                replyButton.addEventListener('click', function () {
+                    addReply(parentCommentId, replyTextarea.value);
+                    clearReplyTextarea(parentCommentId); 
+                });
+
+                replySection.appendChild(replyTitle);
+                replySection.appendChild(replyAuthor);
+                replySection.appendChild(replyContent);
+                replySection.appendChild(replyTextarea);
+                replySection.appendChild(replyButton);
+            }
+        }
+
+        function addReply(parentCommentId, replyContent) {
+            var parentComment = findCommentById(parentCommentId);
+
+            if (parentComment) {
+                if (!parentComment.replies) {
+                    parentComment.replies = [];
+                }
+
+                var reply = {
+                    id: generateUniqueId(),
+                    content: replyContent,
+                    date: Date.now(),
+                    author: 'John' // Replace with the actual author information
+                };
+
+                parentComment.replies.unshift(reply); // Add the new reply to the beginning of the array
+                saveThreadToLocalStorage();
+                renderComments();
+            }
+        }
+
+        function findCommentById(commentId) {
+            if (thread && thread.comments) {
+                return findCommentInArray(thread.comments, commentId);
+            }
+            return null;
+        }
+
+        function findCommentInArray(commentsArray, commentId) {
+            for (var i = 0; i < commentsArray.length; i++) {
+                var comment = commentsArray[i];
+                if (comment.id === commentId) {
+                    return comment;
+                }
+                if (comment.replies) {
+                    var nestedComment = findCommentInArray(comment.replies, commentId);
+                    if (nestedComment) {
+                        return nestedComment;
+                    }
+                }
+            }
+            return null;
+        }
+        
+        function findCommentIndexInArray(commentsArray, commentId) {
+            for (var i = 0; i < commentsArray.length; i++) {
+                if (commentsArray[i].id === commentId) {
+                    return i;
+                }
+            }
+            return -1;
+        }
+
+        function clearReplyTextarea(parentCommentId) {
+            var replyTextarea = document.querySelector(`[data-reply-textarea="${parentCommentId}"]`);
+            if (replyTextarea) {
+                replyTextarea.value = '';
+            }
+        }
+
+        function isModeratorPasswordCorrect(password) {
+            return password === "passwd"; // Replace with your actual password
+        }
+
+        function handleDeleteComment(event) {
+            console.log("handleDeleteComment function called");
+            var password = prompt("Enter moderator password:");
+            if (isModeratorPasswordCorrect(password)) {
+                var commentId = event.target.getAttribute('data-comment-id');
+                console.log("Deleting comment with ID:", commentId);
+
+        var commentIndex = findCommentIndexInArray(thread.comments, commentId);
+
+        if (commentIndex !== -1) {
+            thread.comments.splice(commentIndex, 1);
+                    saveThreadToLocalStorage();
+                    renderComments();
+                } else {
+                    console.error("Comment not found in the array.");
+                }
+            } else {
+                alert("Incorrect password. You don't have permission to delete comments.");
+            }
+        }
+        
+
+        function generateUniqueId() {
+            return Math.random().toString(36).substr(2, 9);
+        }
+
+        function updateCharCount() {
+            charCountDisplay.textContent = 'Characters: ' + commentInput.value.length;
+        }
+
+        function updateCommentCount() {
+            var commentCountElement = document.querySelector('.comment-count');
+            if (thread && thread.comments) {
+                commentCountElement.textContent = `${thread.comments.length} comments`;
+            }
+        }
+
+        function updateThreadStatus() {
+            var threadStatus = document.querySelector('.thread-status');
+            if (thread) {
+                if (thread.locked) {
+                    threadStatus.textContent = 'Thread is locked. Commenting is disabled.';
+                    commentInput.setAttribute('disabled', true);
+                    addCommentBtn.setAttribute('disabled', true);
+                } else {
+                    threadStatus.textContent = '';
+                    commentInput.removeAttribute('disabled');
+                    addCommentBtn.removeAttribute('disabled');
+                }
+            }
+        }
+
+        window.addEventListener('load', function () {
+            loadThreadFromLocalStorage();
+            renderComments();
+
+            var btn = document.querySelector('#addCommentBtn');
+            btn.addEventListener('click', addCommentWithCooldown);
+
+            unlockThreadBtn.addEventListener('click', function () {
+                unlockThread();
+            });
+
+            lockThreadBtn.addEventListener('click', function () {
+                lockThread();
+            });
+
+            container.addEventListener('click', function (event) {
+                if (event.target.classList.contains('delete-comment-btn')) {
+                    handleDeleteComment(event);
+                }
+                if (event.target.classList.contains('reply-comment-btn')) {
+                    var parentCommentId = event.target.getAttribute('data-parent-id');
+                    replyToComment(parentCommentId);
+                }
+            });
+
+            commentInput.addEventListener('input', updateCharCount);
+
+            updateCommentCount();
+            updateThreadStatus();
+        });
+    </script>
+    <script src="data.js"></script>
+    <script>
+        var id = window.location.search.slice(1);
+        var thread = threads.find(t => t.id == id);
+
+        if (thread) {
+            var titleElement = document.querySelector('.title');
+            var timestampElement = document.querySelector('.timestamp');
+            var commentCountElement = document.querySelector('.comment-count');
+
+            titleElement.textContent = thread.title;
+            timestampElement.textContent = new Date(thread.date).toLocaleString();
+            commentCountElement.textContent = `${thread.comments.length} comments`;
+        } else {
+            console.error("Thread not found.");
+        }
+    </script>
+</body>
+</html>
